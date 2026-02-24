@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 // --- Scene setup ---
 const canvas = document.getElementById("canvas");
@@ -7,6 +8,14 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x1a1a2e);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = "absolute";
+labelRenderer.domElement.style.top = "0";
+labelRenderer.domElement.style.left = "0";
+labelRenderer.domElement.style.pointerEvents = "none";
+document.getElementById("app").appendChild(labelRenderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(
@@ -35,6 +44,23 @@ scene.add(dirLight2);
 // Helpers
 const axesHelper = new THREE.AxesHelper(5);
 scene.add(axesHelper);
+
+// Axis labels
+const axesLabelsGroup = new THREE.Group();
+axesLabelsGroup.name = "axesLabels";
+function makeAxisLabel(text, color, position) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  div.style.cssText = `font-size:13px;font-weight:bold;color:${color};text-shadow:0 0 3px #000;`;
+  const label = new CSS2DObject(div);
+  label.position.copy(position);
+  return label;
+}
+axesLabelsGroup.add(makeAxisLabel("X", "#ff4444", new THREE.Vector3(5.5, 0, 0)));
+axesLabelsGroup.add(makeAxisLabel("Y", "#44ff44", new THREE.Vector3(0, 5.5, 0)));
+axesLabelsGroup.add(makeAxisLabel("Z", "#4488ff", new THREE.Vector3(0, 0, 5.5)));
+scene.add(axesLabelsGroup);
+
 const gridHelper = new THREE.GridHelper(20, 20, 0x444466, 0x333355);
 gridHelper.rotation.x = Math.PI / 2; // rotate grid to XY plane (Z-up)
 scene.add(gridHelper);
@@ -50,6 +76,7 @@ const verticesCheck = document.getElementById("showVertices");
 const normalsCheck = document.getElementById("showNormals");
 const axesCheck = document.getElementById("showAxes");
 const gridCheck = document.getElementById("showGrid");
+const indicesCheck = document.getElementById("showIndices");
 const colorModeSelect = document.getElementById("colorMode");
 const opacitySlider = document.getElementById("opacity");
 const pointSizeSlider = document.getElementById("pointSize");
@@ -153,12 +180,34 @@ function loadGeometry(data) {
   normalHelper.visible = normalsCheck.checked;
   meshGroup.add(normalHelper);
 
+  // Index labels
+  const indexLabelsGroup = new THREE.Group();
+  indexLabelsGroup.name = "indexLabels";
+  indexLabelsGroup.visible = indicesCheck.checked;
+  const idxPositions = geometry.attributes.position;
+  for (let i = 0; i < indices.length; i++) {
+    const vi = indices[i];
+    const div = document.createElement("div");
+    div.textContent = String(i);
+    div.style.cssText = "font-size:10px;color:#fff;background:rgba(0,0,0,0.6);padding:0 2px;border-radius:2px;line-height:1.2;white-space:nowrap;";
+    const label = new CSS2DObject(div);
+    label.position.set(idxPositions.getX(vi), idxPositions.getY(vi), idxPositions.getZ(vi));
+    indexLabelsGroup.add(label);
+  }
+  meshGroup.add(indexLabelsGroup);
+
   // Fit camera
   fitCamera(radius);
 
   // Scale grid/axes
-  axesHelper.scale.setScalar(radius * 0.5);
+  const s = radius * 0.5;
+  axesHelper.scale.setScalar(s);
   gridHelper.scale.setScalar(radius * 0.1);
+  // Reposition axis labels to scaled tip
+  const labels = axesLabelsGroup.children;
+  labels[0].position.set(s * 1.1, 0, 0);
+  labels[1].position.set(0, s * 1.1, 0);
+  labels[2].position.set(0, 0, s * 1.1);
 }
 
 function applyColors(geometry, mode) {
@@ -271,8 +320,14 @@ normalsCheck.addEventListener("change", () => {
   if (nh) nh.visible = normalsCheck.checked;
 });
 
+indicesCheck.addEventListener("change", () => {
+  const g = meshGroup.getObjectByName("indexLabels");
+  if (g) g.visible = indicesCheck.checked;
+});
+
 axesCheck.addEventListener("change", () => {
   axesHelper.visible = axesCheck.checked;
+  axesLabelsGroup.visible = axesCheck.checked;
 });
 
 gridCheck.addEventListener("change", () => {
@@ -398,6 +453,7 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // --- Animation loop ---
@@ -406,6 +462,7 @@ function animate() {
   controls.update();
   updateHoverInfo();
   renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
 }
 
 // --- Init ---
