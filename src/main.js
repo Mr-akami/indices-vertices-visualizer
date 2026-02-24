@@ -15,6 +15,9 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   10000
 );
+// Z-up
+camera.up.set(0, 0, 1);
+
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -33,6 +36,7 @@ scene.add(dirLight2);
 const axesHelper = new THREE.AxesHelper(5);
 scene.add(axesHelper);
 const gridHelper = new THREE.GridHelper(20, 20, 0x444466, 0x333355);
+gridHelper.rotation.x = Math.PI / 2; // rotate grid to XY plane (Z-up)
 scene.add(gridHelper);
 
 // --- State ---
@@ -56,6 +60,7 @@ const triCountEl = document.getElementById("triCount");
 const vertCountEl = document.getElementById("vertCount");
 const hoverInfoEl = document.getElementById("hoverInfo");
 const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
 
 // --- Raycaster for hover ---
 const raycaster = new THREE.Raycaster();
@@ -235,7 +240,7 @@ function createNormalHelper(geometry, length) {
 
 function fitCamera(radius) {
   const dist = radius * 2.5;
-  camera.position.set(dist * 0.7, dist * 0.5, dist * 0.7);
+  camera.position.set(dist * 0.7, -dist * 0.7, dist * 0.5);
   camera.lookAt(0, 0, 0);
   controls.target.set(0, 0, 0);
   controls.update();
@@ -324,20 +329,8 @@ toggleSideBtn.addEventListener("click", () => {
   toggleSideBtn.textContent = `Side: ${labels[currentSide]}`;
 });
 
-// --- Drag & drop ---
-dropzone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  dropzone.classList.add("dragover");
-});
-
-dropzone.addEventListener("dragleave", () => {
-  dropzone.classList.remove("dragover");
-});
-
-dropzone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  dropzone.classList.remove("dragover");
-  const file = e.dataTransfer.files[0];
+// --- File loading (shared) ---
+function loadFile(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
@@ -353,6 +346,28 @@ dropzone.addEventListener("drop", (e) => {
     }
   };
   reader.readAsText(file);
+}
+
+// --- File upload button ---
+fileInput.addEventListener("change", () => {
+  loadFile(fileInput.files[0]);
+  fileInput.value = "";
+});
+
+// --- Drag & drop ---
+dropzone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropzone.classList.add("dragover");
+});
+
+dropzone.addEventListener("dragleave", () => {
+  dropzone.classList.remove("dragover");
+});
+
+dropzone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropzone.classList.remove("dragover");
+  loadFile(e.dataTransfer.files[0]);
 });
 
 // --- Hover info ---

@@ -109,19 +109,46 @@ body {
   word-break: break-all;
 }
 
-#dropzone {
+#fileArea {
   pointer-events: auto;
   position: absolute;
   bottom: 12px;
   right: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+#fileUpload {
+  display: flex;
+  align-items: center;
+  background: rgba(20, 20, 40, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: #8ecae6;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+#fileUpload:hover {
+  background: rgba(30, 50, 80, 0.9);
+}
+
+#dropzone {
+  display: flex;
+  align-items: center;
   background: rgba(20, 20, 40, 0.7);
   border: 2px dashed rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  padding: 16px 20px;
+  padding: 10px 16px;
   font-size: 12px;
   color: #888;
   text-align: center;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 #dropzone.dragover {
