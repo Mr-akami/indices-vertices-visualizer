@@ -450,11 +450,13 @@ function fitToAll() {
   // Scale helpers
   const s = radius * 0.5;
   axesHelper.scale.setScalar(s);
+  axesHelper.position.set(box.min.x, box.min.y, box.min.z);
   gridHelper.scale.setScalar(radius * 0.1);
+  gridHelper.position.set(center.x, center.y, box.min.z);
   const labels = axesLabelsGroup.children;
-  labels[0].position.set(s * 1.1, 0, 0);
-  labels[1].position.set(0, s * 1.1, 0);
-  labels[2].position.set(0, 0, s * 1.1);
+  labels[0].position.set(box.min.x + s * 1.1, box.min.y, box.min.z);
+  labels[1].position.set(box.min.x, box.min.y + s * 1.1, box.min.z);
+  labels[2].position.set(box.min.x, box.min.y, box.min.z + s * 1.1);
 }
 
 // --- Helpers: iterate all file meshes ---
