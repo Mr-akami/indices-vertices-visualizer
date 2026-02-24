@@ -324,6 +324,12 @@ function updateFileListUI() {
     label.textContent = entry.name;
     label.title = entry.name;
 
+    const exportBtn = document.createElement("button");
+    exportBtn.textContent = "\u21e9";
+    exportBtn.className = "file-export";
+    exportBtn.title = "Export JSON";
+    exportBtn.addEventListener("click", () => exportGeometry(entry));
+
     const removeBtn = document.createElement("button");
     removeBtn.textContent = "\u00d7";
     removeBtn.className = "file-remove";
@@ -331,9 +337,26 @@ function updateFileListUI() {
 
     row.appendChild(cb);
     row.appendChild(label);
+    row.appendChild(exportBtn);
     row.appendChild(removeBtn);
     fileListEl.appendChild(row);
   }
+}
+
+// --- Export ---
+function exportGeometry(entry) {
+  const json = JSON.stringify(
+    { indices: entry.data.indices, vertices: entry.data.vertices },
+    null,
+    2
+  );
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = entry.name.replace(/\.[^.]+$/, "") + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // --- Colors ---
