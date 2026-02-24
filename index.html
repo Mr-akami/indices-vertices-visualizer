@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Indices/Vertices Visualizer</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="canvas"></canvas>
+      <div id="ui">
+        <div id="panel">
+          <h3>Controls</h3>
+          <label><input type="checkbox" id="wireframe" /> Wireframe</label>
+          <label><input type="checkbox" id="showVertices" checked /> Vertices</label>
+          <label><input type="checkbox" id="showNormals" /> Normals</label>
+          <label><input type="checkbox" id="showAxes" checked /> Axes</label>
+          <label><input type="checkbox" id="showGrid" checked /> Grid</label>
+          <hr />
+          <label>Color Mode
+            <select id="colorMode">
+              <option value="height">Height</option>
+              <option value="index">Triangle Index</option>
+              <option value="flat">Flat</option>
+            </select>
+          </label>
+          <label>Opacity <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.85" /></label>
+          <label>Point Size <input type="range" id="pointSize" min="1" max="10" step="0.5" value="3" /></label>
+          <hr />
+          <button id="resetCamera">Reset Camera</button>
+          <button id="fitToView">Fit to View</button>
+          <button id="toggleSide">Toggle Side</button>
+          <hr />
+          <div id="info">
+            <div>Triangles: <span id="triCount">0</span></div>
+            <div>Vertices: <span id="vertCount">0</span></div>
+            <div id="hoverInfo"></div>
+          </div>
+        </div>
+        <div id="dropzone">Drop JSON file here</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
