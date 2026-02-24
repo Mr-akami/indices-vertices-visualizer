@@ -619,7 +619,10 @@ function updateHoverInfo() {
   if (intersects.length > 0) {
     const hit = intersects[0];
     const p = hit.point;
-    hoverInfoEl.textContent = `Tri #${hit.faceIndex} | (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`;
+    const ox = p.x + globalCenter.x;
+    const oy = p.y + globalCenter.y;
+    const oz = p.z + globalCenter.z;
+    hoverInfoEl.textContent = `Tri #${hit.faceIndex} | (${ox.toFixed(6)}, ${oy.toFixed(6)}, ${oz.toFixed(6)})`;
   } else {
     hoverInfoEl.textContent = "";
   }
