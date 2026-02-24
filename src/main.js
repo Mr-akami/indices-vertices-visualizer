@@ -1,6 +1,9 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import {
+  CSS2DRenderer,
+  CSS2DObject,
+} from "three/addons/renderers/CSS2DRenderer.js";
 
 // --- Scene setup ---
 const canvas = document.getElementById("canvas");
@@ -24,7 +27,6 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   10000
 );
-// Z-up
 camera.up.set(0, 0, 1);
 
 const controls = new OrbitControls(camera, canvas);
@@ -32,8 +34,7 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 
 // Lights
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-scene.add(ambientLight);
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
 dirLight.position.set(1, 1, 1);
 scene.add(dirLight);
@@ -44,10 +45,7 @@ scene.add(dirLight2);
 // Helpers
 const axesHelper = new THREE.AxesHelper(5);
 scene.add(axesHelper);
-
-// Axis labels
 const axesLabelsGroup = new THREE.Group();
-axesLabelsGroup.name = "axesLabels";
 function makeAxisLabel(text, color, position) {
   const div = document.createElement("div");
   div.textContent = text;
@@ -56,19 +54,26 @@ function makeAxisLabel(text, color, position) {
   label.position.copy(position);
   return label;
 }
-axesLabelsGroup.add(makeAxisLabel("X", "#ff4444", new THREE.Vector3(5.5, 0, 0)));
-axesLabelsGroup.add(makeAxisLabel("Y", "#44ff44", new THREE.Vector3(0, 5.5, 0)));
-axesLabelsGroup.add(makeAxisLabel("Z", "#4488ff", new THREE.Vector3(0, 0, 5.5)));
+axesLabelsGroup.add(
+  makeAxisLabel("X", "#ff4444", new THREE.Vector3(5.5, 0, 0))
+);
+axesLabelsGroup.add(
+  makeAxisLabel("Y", "#44ff44", new THREE.Vector3(0, 5.5, 0))
+);
+axesLabelsGroup.add(
+  makeAxisLabel("Z", "#4488ff", new THREE.Vector3(0, 0, 5.5))
+);
 scene.add(axesLabelsGroup);
 
 const gridHelper = new THREE.GridHelper(20, 20, 0x444466, 0x333355);
-gridHelper.rotation.x = Math.PI / 2; // rotate grid to XY plane (Z-up)
+gridHelper.rotation.x = Math.PI / 2;
 scene.add(gridHelper);
 
 // --- State ---
-let meshGroup = new THREE.Group();
-scene.add(meshGroup);
 let currentSide = THREE.DoubleSide;
+const fileEntries = []; // { id, name, group, data }
+let fileIdCounter = 0;
+let globalCenter = new THREE.Vector3();
 
 // --- UI elements ---
 const wireframeCheck = document.getElementById("wireframe");
@@ -88,42 +93,83 @@ const vertCountEl = document.getElementById("vertCount");
 const hoverInfoEl = document.getElementById("hoverInfo");
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
+const fileListEl = document.getElementById("fileList");
 
-// --- Raycaster for hover ---
+// --- Raycaster ---
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 raycaster.params.Points.threshold = 0.3;
 
-// --- Load and render geometry ---
-function loadGeometry(data) {
-  // Clear previous
-  meshGroup.clear();
+// --- LandXML parser ---
+function parseLandXML(xmlString) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlString, "text/xml");
+  const surfaces = doc.getElementsByTagName("Surface");
+  const results = [];
 
-  const { indices, vertices } = data;
-  const numVertices = vertices.length / 3;
-  const numTriangles = indices.length / 3;
+  for (const surface of surfaces) {
+    const name = surface.getAttribute("name") || "Untitled";
+    const pnts = surface.getElementsByTagName("P");
+    const faces = surface.getElementsByTagName("F");
 
-  triCountEl.textContent = numTriangles;
-  vertCountEl.textContent = numVertices;
+    // Build vertex map (1-based id → {index, x, y, z})
+    const vertexMap = new Map();
+    const vertices = [];
+    let idx = 0;
+    for (const p of pnts) {
+      const id = parseInt(p.getAttribute("id"));
+      const coords = p.textContent.trim().split(/\s+/).map(Number);
+      // LandXML: northing, easting, elevation → we store as x=easting, y=northing, z=elevation
+      vertexMap.set(id, idx);
+      vertices.push(coords[1], coords[0], coords[2]);
+      idx++;
+    }
 
-  // Create buffer geometry
+    const indices = [];
+    for (const f of faces) {
+      const ids = f.textContent.trim().split(/\s+/).map(Number);
+      indices.push(vertexMap.get(ids[0]), vertexMap.get(ids[1]), vertexMap.get(ids[2]));
+    }
+
+    results.push({ name, indices, vertices });
+  }
+
+  return results;
+}
+
+// --- Compute global center from all files ---
+function computeGlobalCenter() {
+  const box = new THREE.Box3();
+  for (const entry of fileEntries) {
+    const verts = entry.data.vertices;
+    for (let i = 0; i < verts.length; i += 3) {
+      box.expandByPoint(new THREE.Vector3(verts[i], verts[i + 1], verts[i + 2]));
+    }
+  }
+  if (box.isEmpty()) {
+    globalCenter.set(0, 0, 0);
+  } else {
+    box.getCenter(globalCenter);
+  }
+}
+
+// --- Build mesh group for a file entry ---
+function buildMeshGroup(entry) {
+  const group = new THREE.Group();
+  const { indices, vertices } = entry.data;
+
   const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(vertices);
+  const positions = new Float32Array(vertices.length);
+  for (let i = 0; i < vertices.length; i += 3) {
+    positions[i] = vertices[i] - globalCenter.x;
+    positions[i + 1] = vertices[i + 1] - globalCenter.y;
+    positions[i + 2] = vertices[i + 2] - globalCenter.z;
+  }
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
-
-  // Center the geometry
-  geometry.computeBoundingBox();
-  const center = new THREE.Vector3();
-  geometry.boundingBox.getCenter(center);
-  geometry.translate(-center.x, -center.y, -center.z);
-
-  // Compute bounding sphere for camera fitting
   geometry.computeBoundingSphere();
-  const radius = geometry.boundingSphere.radius;
 
-  // Apply vertex colors
   applyColors(geometry, colorModeSelect.value);
 
   // Mesh
@@ -135,20 +181,22 @@ function loadGeometry(data) {
     wireframe: wireframeCheck.checked,
   });
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = "mainMesh";
-  meshGroup.add(mesh);
+  mesh.name = "mesh";
+  group.add(mesh);
 
-  // Wireframe overlay (always visible when wireframe is off for edge clarity)
-  const wireGeometry = new THREE.WireframeGeometry(geometry);
+  // Wireframe overlay
   const wireMat = new THREE.LineBasicMaterial({
     color: 0x8ecae6,
     opacity: 0.15,
     transparent: true,
   });
-  const wireOverlay = new THREE.LineSegments(wireGeometry, wireMat);
+  const wireOverlay = new THREE.LineSegments(
+    new THREE.WireframeGeometry(geometry),
+    wireMat
+  );
   wireOverlay.name = "wireOverlay";
   wireOverlay.visible = !wireframeCheck.checked;
-  meshGroup.add(wireOverlay);
+  group.add(wireOverlay);
 
   // Vertex points
   const pointsGeometry = new THREE.BufferGeometry();
@@ -156,13 +204,6 @@ function loadGeometry(data) {
     "position",
     new THREE.BufferAttribute(positions.slice(), 3)
   );
-  // Apply same centering
-  const posArr = pointsGeometry.attributes.position.array;
-  for (let i = 0; i < posArr.length; i += 3) {
-    posArr[i] -= center.x;
-    posArr[i + 1] -= center.y;
-    posArr[i + 2] -= center.z;
-  }
   const pointsMat = new THREE.PointsMaterial({
     color: 0xffb703,
     size: parseFloat(pointSizeSlider.value),
@@ -171,45 +212,131 @@ function loadGeometry(data) {
   const points = new THREE.Points(pointsGeometry, pointsMat);
   points.name = "vertexPoints";
   points.visible = verticesCheck.checked;
-  meshGroup.add(points);
+  group.add(points);
 
   // Normal helpers
-  const normalLength = radius * 0.05;
-  const normalHelper = createNormalHelper(geometry, normalLength);
+  const radius = geometry.boundingSphere.radius;
+  const normalHelper = createNormalHelper(geometry, radius * 0.05);
   normalHelper.name = "normalHelper";
   normalHelper.visible = normalsCheck.checked;
-  meshGroup.add(normalHelper);
+  group.add(normalHelper);
 
   // Index labels
   const indexLabelsGroup = new THREE.Group();
   indexLabelsGroup.name = "indexLabels";
   indexLabelsGroup.visible = indicesCheck.checked;
-  const idxPositions = geometry.attributes.position;
+  const pos = geometry.attributes.position;
   for (let i = 0; i < indices.length; i++) {
     const vi = indices[i];
     const div = document.createElement("div");
     div.textContent = String(i);
-    div.style.cssText = "font-size:10px;color:#fff;background:rgba(0,0,0,0.6);padding:0 2px;border-radius:2px;line-height:1.2;white-space:nowrap;";
+    div.style.cssText =
+      "font-size:10px;color:#fff;background:rgba(0,0,0,0.6);padding:0 2px;border-radius:2px;line-height:1.2;white-space:nowrap;";
     const label = new CSS2DObject(div);
-    label.position.set(idxPositions.getX(vi), idxPositions.getY(vi), idxPositions.getZ(vi));
+    label.position.set(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
     indexLabelsGroup.add(label);
   }
-  meshGroup.add(indexLabelsGroup);
+  group.add(indexLabelsGroup);
 
-  // Fit camera
-  fitCamera(radius);
-
-  // Scale grid/axes
-  const s = radius * 0.5;
-  axesHelper.scale.setScalar(s);
-  gridHelper.scale.setScalar(radius * 0.1);
-  // Reposition axis labels to scaled tip
-  const labels = axesLabelsGroup.children;
-  labels[0].position.set(s * 1.1, 0, 0);
-  labels[1].position.set(0, s * 1.1, 0);
-  labels[2].position.set(0, 0, s * 1.1);
+  return group;
 }
 
+// --- Rebuild all meshes (after center changes) ---
+function rebuildAll() {
+  computeGlobalCenter();
+  for (const entry of fileEntries) {
+    if (entry.group) {
+      scene.remove(entry.group);
+      disposeGroup(entry.group);
+    }
+    entry.group = buildMeshGroup(entry);
+    entry.group.visible = entry.visible;
+    scene.add(entry.group);
+  }
+  updateStats();
+  fitToAll();
+}
+
+function disposeGroup(group) {
+  group.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+      else obj.material.dispose();
+    }
+  });
+}
+
+// --- Add geometry data ---
+function addGeometry(name, data) {
+  const id = fileIdCounter++;
+  const entry = { id, name, data, group: null, visible: true };
+  fileEntries.push(entry);
+  rebuildAll();
+  updateFileListUI();
+}
+
+// --- Remove geometry ---
+function removeGeometry(id) {
+  const idx = fileEntries.findIndex((e) => e.id === id);
+  if (idx === -1) return;
+  const entry = fileEntries[idx];
+  if (entry.group) {
+    scene.remove(entry.group);
+    disposeGroup(entry.group);
+  }
+  fileEntries.splice(idx, 1);
+  rebuildAll();
+  updateFileListUI();
+}
+
+// --- Update stats ---
+function updateStats() {
+  let totalTri = 0,
+    totalVert = 0;
+  for (const entry of fileEntries) {
+    if (!entry.visible) continue;
+    totalTri += entry.data.indices.length / 3;
+    totalVert += entry.data.vertices.length / 3;
+  }
+  triCountEl.textContent = totalTri;
+  vertCountEl.textContent = totalVert;
+}
+
+// --- File list UI ---
+function updateFileListUI() {
+  fileListEl.innerHTML = "";
+  for (const entry of fileEntries) {
+    const row = document.createElement("div");
+    row.className = "file-row";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = entry.visible;
+    cb.addEventListener("change", () => {
+      entry.visible = cb.checked;
+      if (entry.group) entry.group.visible = cb.checked;
+      updateStats();
+    });
+
+    const label = document.createElement("span");
+    label.className = "file-name";
+    label.textContent = entry.name;
+    label.title = entry.name;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "\u00d7";
+    removeBtn.className = "file-remove";
+    removeBtn.addEventListener("click", () => removeGeometry(entry.id));
+
+    row.appendChild(cb);
+    row.appendChild(label);
+    row.appendChild(removeBtn);
+    fileListEl.appendChild(row);
+  }
+}
+
+// --- Colors ---
 function applyColors(geometry, mode) {
   const positions = geometry.attributes.position;
   const count = positions.count;
@@ -217,7 +344,6 @@ function applyColors(geometry, mode) {
   const indices = geometry.index ? geometry.index.array : null;
 
   if (mode === "height") {
-    // Color by Z value (height)
     let minZ = Infinity,
       maxZ = -Infinity;
     for (let i = 0; i < count; i++) {
@@ -235,7 +361,6 @@ function applyColors(geometry, mode) {
       colors[i * 3 + 2] = color.b;
     }
   } else if (mode === "index") {
-    // Color by triangle index
     const numTri = indices ? indices.length / 3 : count / 3;
     for (let t = 0; t < numTri; t++) {
       const color = new THREE.Color();
@@ -248,7 +373,6 @@ function applyColors(geometry, mode) {
       }
     }
   } else {
-    // Flat color
     const color = new THREE.Color(0x219ebc);
     for (let i = 0; i < count; i++) {
       colors[i * 3] = color.r;
@@ -283,46 +407,93 @@ function createNormalHelper(geometry, length) {
   );
   return new THREE.LineSegments(
     lineGeometry,
-    new THREE.LineBasicMaterial({ color: 0x00ff88, opacity: 0.5, transparent: true })
+    new THREE.LineBasicMaterial({
+      color: 0x00ff88,
+      opacity: 0.5,
+      transparent: true,
+    })
   );
 }
 
-function fitCamera(radius) {
+// --- Camera ---
+function fitToAll() {
+  const box = new THREE.Box3();
+  for (const entry of fileEntries) {
+    if (!entry.visible || !entry.group) continue;
+    const mesh = entry.group.getObjectByName("mesh");
+    if (mesh) {
+      mesh.geometry.computeBoundingBox();
+      const b = mesh.geometry.boundingBox.clone();
+      box.union(b);
+    }
+  }
+  if (box.isEmpty()) return;
+
+  const sphere = new THREE.Sphere();
+  box.getBoundingSphere(sphere);
+  const radius = sphere.radius;
+  const center = sphere.center;
+
   const dist = radius * 2.5;
-  camera.position.set(dist * 0.7, -dist * 0.7, dist * 0.5);
-  camera.lookAt(0, 0, 0);
-  controls.target.set(0, 0, 0);
+  camera.position.set(
+    center.x + dist * 0.7,
+    center.y - dist * 0.7,
+    center.z + dist * 0.5
+  );
+  camera.lookAt(center);
+  controls.target.copy(center);
   controls.update();
   camera.near = radius * 0.01;
   camera.far = radius * 100;
   camera.updateProjectionMatrix();
+
+  // Scale helpers
+  const s = radius * 0.5;
+  axesHelper.scale.setScalar(s);
+  gridHelper.scale.setScalar(radius * 0.1);
+  const labels = axesLabelsGroup.children;
+  labels[0].position.set(s * 1.1, 0, 0);
+  labels[1].position.set(0, s * 1.1, 0);
+  labels[2].position.set(0, 0, s * 1.1);
 }
 
-function getMainMesh() {
-  return meshGroup.getObjectByName("mainMesh");
+// --- Helpers: iterate all file meshes ---
+function forEachMesh(fn) {
+  for (const entry of fileEntries) {
+    if (!entry.group) continue;
+    fn(entry.group);
+  }
 }
 
 // --- UI handlers ---
 wireframeCheck.addEventListener("change", () => {
-  const mesh = getMainMesh();
-  if (mesh) mesh.material.wireframe = wireframeCheck.checked;
-  const overlay = meshGroup.getObjectByName("wireOverlay");
-  if (overlay) overlay.visible = !wireframeCheck.checked;
+  forEachMesh((g) => {
+    const m = g.getObjectByName("mesh");
+    if (m) m.material.wireframe = wireframeCheck.checked;
+    const w = g.getObjectByName("wireOverlay");
+    if (w) w.visible = !wireframeCheck.checked;
+  });
 });
 
 verticesCheck.addEventListener("change", () => {
-  const pts = meshGroup.getObjectByName("vertexPoints");
-  if (pts) pts.visible = verticesCheck.checked;
+  forEachMesh((g) => {
+    const p = g.getObjectByName("vertexPoints");
+    if (p) p.visible = verticesCheck.checked;
+  });
 });
 
 normalsCheck.addEventListener("change", () => {
-  const nh = meshGroup.getObjectByName("normalHelper");
-  if (nh) nh.visible = normalsCheck.checked;
+  forEachMesh((g) => {
+    const n = g.getObjectByName("normalHelper");
+    if (n) n.visible = normalsCheck.checked;
+  });
 });
 
 indicesCheck.addEventListener("change", () => {
-  const g = meshGroup.getObjectByName("indexLabels");
-  if (g) g.visible = indicesCheck.checked;
+  forEachMesh((g) => {
+    const l = g.getObjectByName("indexLabels");
+    if (l) l.visible = indicesCheck.checked;
+  });
 });
 
 axesCheck.addEventListener("change", () => {
@@ -335,114 +506,120 @@ gridCheck.addEventListener("change", () => {
 });
 
 colorModeSelect.addEventListener("change", () => {
-  const mesh = getMainMesh();
-  if (mesh) {
-    applyColors(mesh.geometry, colorModeSelect.value);
-    mesh.geometry.attributes.color.needsUpdate = true;
-  }
+  forEachMesh((g) => {
+    const m = g.getObjectByName("mesh");
+    if (m) {
+      applyColors(m.geometry, colorModeSelect.value);
+      m.geometry.attributes.color.needsUpdate = true;
+    }
+  });
 });
 
 opacitySlider.addEventListener("input", () => {
-  const mesh = getMainMesh();
-  if (mesh) mesh.material.opacity = parseFloat(opacitySlider.value);
+  forEachMesh((g) => {
+    const m = g.getObjectByName("mesh");
+    if (m) m.material.opacity = parseFloat(opacitySlider.value);
+  });
 });
 
 pointSizeSlider.addEventListener("input", () => {
-  const pts = meshGroup.getObjectByName("vertexPoints");
-  if (pts) pts.material.size = parseFloat(pointSizeSlider.value);
+  forEachMesh((g) => {
+    const p = g.getObjectByName("vertexPoints");
+    if (p) p.material.size = parseFloat(pointSizeSlider.value);
+  });
 });
 
-resetCameraBtn.addEventListener("click", () => {
-  const mesh = getMainMesh();
-  if (mesh) {
-    mesh.geometry.computeBoundingSphere();
-    fitCamera(mesh.geometry.boundingSphere.radius);
-  }
-});
-
-fitToViewBtn.addEventListener("click", () => {
-  const mesh = getMainMesh();
-  if (mesh) {
-    mesh.geometry.computeBoundingSphere();
-    fitCamera(mesh.geometry.boundingSphere.radius);
-  }
-});
+resetCameraBtn.addEventListener("click", fitToAll);
+fitToViewBtn.addEventListener("click", fitToAll);
 
 toggleSideBtn.addEventListener("click", () => {
-  const mesh = getMainMesh();
-  if (!mesh) return;
   if (currentSide === THREE.DoubleSide) currentSide = THREE.FrontSide;
   else if (currentSide === THREE.FrontSide) currentSide = THREE.BackSide;
   else currentSide = THREE.DoubleSide;
-  mesh.material.side = currentSide;
-  mesh.material.needsUpdate = true;
   const labels = {
     [THREE.DoubleSide]: "Double",
     [THREE.FrontSide]: "Front",
     [THREE.BackSide]: "Back",
   };
   toggleSideBtn.textContent = `Side: ${labels[currentSide]}`;
+  forEachMesh((g) => {
+    const m = g.getObjectByName("mesh");
+    if (m) {
+      m.material.side = currentSide;
+      m.material.needsUpdate = true;
+    }
+  });
 });
 
-// --- File loading (shared) ---
+// --- File loading ---
 function loadFile(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
+    const text = ev.target.result;
+    const ext = file.name.split(".").pop().toLowerCase();
     try {
-      const data = JSON.parse(ev.target.result);
-      if (data.indices && data.vertices) {
-        loadGeometry(data);
+      if (ext === "xml" || text.trimStart().startsWith("<")) {
+        const surfaces = parseLandXML(text);
+        if (surfaces.length === 0) {
+          alert("No surfaces found in LandXML");
+          return;
+        }
+        for (const s of surfaces) {
+          addGeometry(`${file.name} [${s.name}]`, s);
+        }
       } else {
-        alert("JSON must have 'indices' and 'vertices' arrays");
+        const data = JSON.parse(text);
+        if (data.indices && data.vertices) {
+          addGeometry(file.name, data);
+        } else {
+          alert("JSON must have 'indices' and 'vertices' arrays");
+        }
       }
-    } catch {
-      alert("Invalid JSON file");
+    } catch (e) {
+      alert("Failed to parse file: " + e.message);
     }
   };
   reader.readAsText(file);
 }
 
-// --- File upload button ---
 fileInput.addEventListener("change", () => {
-  loadFile(fileInput.files[0]);
+  for (const f of fileInput.files) loadFile(f);
   fileInput.value = "";
 });
 
-// --- Drag & drop ---
 dropzone.addEventListener("dragover", (e) => {
   e.preventDefault();
   dropzone.classList.add("dragover");
 });
-
-dropzone.addEventListener("dragleave", () => {
-  dropzone.classList.remove("dragover");
-});
-
+dropzone.addEventListener("dragleave", () =>
+  dropzone.classList.remove("dragover")
+);
 dropzone.addEventListener("drop", (e) => {
   e.preventDefault();
   dropzone.classList.remove("dragover");
-  loadFile(e.dataTransfer.files[0]);
+  for (const f of e.dataTransfer.files) loadFile(f);
 });
 
-// --- Hover info ---
+// --- Hover ---
 canvas.addEventListener("mousemove", (e) => {
   mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 });
 
 function updateHoverInfo() {
-  const mesh = getMainMesh();
-  if (!mesh) return;
-
   raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObject(mesh);
-
+  const meshes = [];
+  for (const entry of fileEntries) {
+    if (!entry.visible || !entry.group) continue;
+    const m = entry.group.getObjectByName("mesh");
+    if (m) meshes.push(m);
+  }
+  const intersects = raycaster.intersectObjects(meshes);
   if (intersects.length > 0) {
     const hit = intersects[0];
-    const triIdx = hit.faceIndex;
     const p = hit.point;
-    hoverInfoEl.textContent = `Tri #${triIdx} | (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`;
+    hoverInfoEl.textContent = `Tri #${hit.faceIndex} | (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`;
   } else {
     hoverInfoEl.textContent = "";
   }
@@ -468,6 +645,6 @@ function animate() {
 // --- Init ---
 fetch(import.meta.env.BASE_URL + "default-geometry.json")
   .then((r) => r.json())
-  .then((data) => loadGeometry(data));
+  .then((data) => addGeometry("default-geometry.json", data));
 
 animate();
