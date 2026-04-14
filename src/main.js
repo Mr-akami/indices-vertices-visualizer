@@ -143,8 +143,8 @@ function parseHeightmapJSON(data) {
   const min = data.min;
   const max = data.max;
 
-  const cols = Math.round((max[0] - min[0]) / cellLength) + 1;
-  const rows = Math.round((max[1] - min[1]) / cellLength) + 1;
+  const cols = Math.round((max[0] - min[0]) / cellLength);
+  const rows = Math.round((max[1] - min[1]) / cellLength);
 
   const vertices = [];
   const validIndex = new Map();
