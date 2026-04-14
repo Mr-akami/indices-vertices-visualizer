@@ -137,6 +137,57 @@ function parseLandXML(xmlString) {
   return results;
 }
 
+// --- Heightmap grid JSON parser ---
+function parseHeightmapJSON(data) {
+  const cellLength = data.cellLength;
+  const min = data.min;
+  const max = data.max;
+
+  const cols = Math.round((max[0] - min[0]) / cellLength) + 1;
+  const rows = Math.round((max[1] - min[1]) / cellLength) + 1;
+
+  const vertices = [];
+  const validIndex = new Map();
+  let vertIdx = 0;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      const h = data.heights[i];
+      const z = typeof h === "string" ? parseFloat(h) : h;
+      if (z == null || isNaN(z)) continue;
+
+      validIndex.set(i, vertIdx);
+      vertices.push(min[0] + c * cellLength, min[1] + r * cellLength, z);
+      vertIdx++;
+    }
+  }
+
+  const indices = [];
+  for (let r = 0; r < rows - 1; r++) {
+    for (let c = 0; c < cols - 1; c++) {
+      const tl = r * cols + c;
+      const tr = tl + 1;
+      const bl = tl + cols;
+      const br = bl + 1;
+
+      const iTL = validIndex.get(tl);
+      const iTR = validIndex.get(tr);
+      const iBL = validIndex.get(bl);
+      const iBR = validIndex.get(br);
+
+      if (iTL != null && iTR != null && iBL != null) {
+        indices.push(iTL, iBL, iTR);
+      }
+      if (iTR != null && iBL != null && iBR != null) {
+        indices.push(iTR, iBL, iBR);
+      }
+    }
+  }
+
+  return { indices, vertices };
+}
+
 // --- Compute global center from all files ---
 function computeGlobalCenter() {
   const box = new THREE.Box3();
@@ -597,8 +648,10 @@ function loadFile(file) {
         const data = JSON.parse(text);
         if (data.indices && data.vertices) {
           addGeometry(file.name, data);
+        } else if (data.heights && data.cellLength != null && data.min && data.max) {
+          addGeometry(file.name, parseHeightmapJSON(data));
         } else {
-          alert("JSON must have 'indices' and 'vertices' arrays");
+          alert("Unsupported JSON format");
         }
       }
     } catch (e) {
