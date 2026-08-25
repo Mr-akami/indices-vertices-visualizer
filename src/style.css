@@ -181,6 +181,16 @@ body {
   color: #ccc;
 }
 
+.file-offset {
+  width: 52px;
+  background: #2a2a44;
+  border: 1px solid #444466;
+  border-radius: 3px;
+  color: #ccc;
+  font-size: 11px;
+  padding: 1px 3px;
+}
+
 .file-export {
   background: none;
   border: none;
