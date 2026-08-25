@@ -210,11 +210,12 @@ function buildMeshGroup(entry) {
   const { indices, vertices } = entry.data;
 
   const geometry = new THREE.BufferGeometry();
+  const off = entry.offset || { x: 0, y: 0, z: 0 };
   const positions = new Float32Array(vertices.length);
   for (let i = 0; i < vertices.length; i += 3) {
-    positions[i] = vertices[i] - globalCenter.x;
-    positions[i + 1] = vertices[i + 1] - globalCenter.y;
-    positions[i + 2] = vertices[i + 2] - globalCenter.z;
+    positions[i] = vertices[i] - globalCenter.x + off.x;
+    positions[i + 1] = vertices[i + 1] - globalCenter.y + off.y;
+    positions[i + 2] = vertices[i + 2] - globalCenter.z + off.z;
   }
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setIndex(indices);
@@ -308,6 +309,17 @@ function rebuildAll() {
   fitToAll();
 }
 
+// --- Rebuild a single entry (offset change; no camera refit) ---
+function rebuildEntry(entry) {
+  if (entry.group) {
+    scene.remove(entry.group);
+    disposeGroup(entry.group);
+  }
+  entry.group = buildMeshGroup(entry);
+  entry.group.visible = entry.visible;
+  scene.add(entry.group);
+}
+
 function disposeGroup(group) {
   group.traverse((obj) => {
     if (obj.geometry) obj.geometry.dispose();
@@ -321,7 +333,14 @@ function disposeGroup(group) {
 // --- Add geometry data ---
 function addGeometry(name, data) {
   const id = fileIdCounter++;
-  const entry = { id, name, data, group: null, visible: true };
+  const entry = {
+    id,
+    name,
+    data,
+    group: null,
+    visible: true,
+    offset: { x: 0, y: 0, z: 0 },
+  };
   fileEntries.push(entry);
   rebuildAll();
   updateFileListUI();
@@ -375,6 +394,17 @@ function updateFileListUI() {
     label.textContent = entry.name;
     label.title = entry.name;
 
+    const zInput = document.createElement("input");
+    zInput.type = "number";
+    zInput.step = "any";
+    zInput.value = entry.offset.z;
+    zInput.className = "file-offset";
+    zInput.title = "Z offset";
+    zInput.addEventListener("change", () => {
+      entry.offset.z = parseFloat(zInput.value) || 0;
+      rebuildEntry(entry);
+    });
+
     const exportBtn = document.createElement("button");
     exportBtn.textContent = "\u21e9";
     exportBtn.className = "file-export";
@@ -388,6 +418,7 @@ function updateFileListUI() {
 
     row.appendChild(cb);
     row.appendChild(label);
+    row.appendChild(zInput);
     row.appendChild(exportBtn);
     row.appendChild(removeBtn);
     fileListEl.appendChild(row);
@@ -396,8 +427,15 @@ function updateFileListUI() {
 
 // --- Export ---
 function exportGeometry(entry) {
+  const off = entry.offset || { x: 0, y: 0, z: 0 };
+  const vertices = entry.data.vertices.slice();
+  for (let i = 0; i < vertices.length; i += 3) {
+    vertices[i] += off.x;
+    vertices[i + 1] += off.y;
+    vertices[i + 2] += off.z;
+  }
   const json = JSON.stringify(
-    { indices: entry.data.indices, vertices: entry.data.vertices },
+    { indices: entry.data.indices, vertices },
     null,
     2
   );
