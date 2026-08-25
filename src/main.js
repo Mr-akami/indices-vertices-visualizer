@@ -411,6 +411,12 @@ function updateFileListUI() {
     exportBtn.title = "Export JSON";
     exportBtn.addEventListener("click", () => exportGeometry(entry));
 
+    const xmlBtn = document.createElement("button");
+    xmlBtn.textContent = "X";
+    xmlBtn.className = "file-export";
+    xmlBtn.title = "Export LandXML";
+    xmlBtn.addEventListener("click", () => exportLandXML(entry));
+
     const removeBtn = document.createElement("button");
     removeBtn.textContent = "\u00d7";
     removeBtn.className = "file-remove";
@@ -420,13 +426,14 @@ function updateFileListUI() {
     row.appendChild(label);
     row.appendChild(zInput);
     row.appendChild(exportBtn);
+    row.appendChild(xmlBtn);
     row.appendChild(removeBtn);
     fileListEl.appendChild(row);
   }
 }
 
 // --- Export ---
-function exportGeometry(entry) {
+function offsetVertices(entry) {
   const off = entry.offset || { x: 0, y: 0, z: 0 };
   const vertices = entry.data.vertices.slice();
   for (let i = 0; i < vertices.length; i += 3) {
@@ -434,18 +441,75 @@ function exportGeometry(entry) {
     vertices[i + 1] += off.y;
     vertices[i + 2] += off.z;
   }
-  const json = JSON.stringify(
-    { indices: entry.data.indices, vertices },
-    null,
-    2
-  );
-  const blob = new Blob([json], { type: "application/json" });
+  return vertices;
+}
+
+function downloadBlob(content, mimeType, filename) {
+  const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = entry.name.replace(/\.[^.]+$/, "") + ".json";
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function baseName(entry) {
+  return entry.name.replace(/\.[^.]+$/, "").replace(/ \[.*\]$/, "");
+}
+
+function exportGeometry(entry) {
+  const json = JSON.stringify(
+    { indices: entry.data.indices, vertices: offsetVertices(entry) },
+    null,
+    2
+  );
+  downloadBlob(json, "application/json", baseName(entry) + ".json");
+}
+
+function exportLandXML(entry) {
+  const vertices = offsetVertices(entry);
+  const indices = entry.data.indices;
+  const name = baseName(entry);
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const time = now.toTimeString().slice(0, 8);
+
+  const pnts = [];
+  for (let i = 0; i < vertices.length; i += 3) {
+    // internal x=easting, y=northing → LandXML P: northing easting elevation
+    pnts.push(
+      `     <P id="${i / 3 + 1}">${vertices[i + 1]} ${vertices[i]} ${vertices[i + 2]}</P>`
+    );
+  }
+  const faces = [];
+  for (let i = 0; i < indices.length; i += 3) {
+    faces.push(
+      `     <F>${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}</F>`
+    );
+  }
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.landxml.org/schema/LandXML-1.2 http://www.landxml.org/schema/LandXML-1.2/LandXML-1.2.xsd" date="${date}" time="${time}" version="1.2" language="Japanese" readOnly="false" xmlns="http://www.landxml.org/schema/LandXML-1.2">
+ <Units>
+  <Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter" temperatureUnit="celsius" pressureUnit="milliBars" angularUnit="decimal degrees" directionUnit="decimal degrees"/>
+ </Units>
+ <Project name="${name}" manufacturer="EARTHBRAIN" manufacturerURL="https://www.earthbrain.com/"/>
+ <Surfaces>
+  <Surface name="${name}">
+   <Definition surfType="TIN">
+    <Pnts>
+${pnts.join("\n")}
+    </Pnts>
+    <Faces>
+${faces.join("\n")}
+    </Faces>
+   </Definition>
+  </Surface>
+ </Surfaces>
+</LandXML>
+`;
+  downloadBlob(xml, "application/xml", name + ".xml");
 }
 
 // --- Colors ---
